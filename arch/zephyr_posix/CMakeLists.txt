@@ -14,7 +14,6 @@ if (${_index} GREATER -1 OR "${UA_ARCHITECTURE}" STREQUAL "zephyr_posix")
         if(NOT CYGWIN AND NOT QNXNTO)
             ua_architecture_add_definitions(-Wshadow -Wconversion -fvisibility=hidden -fPIC)
         endif()
-
         if(QNXNTO)
           ua_architecture_append_to_library(socket c stdc++)
         elseif(OS9)
@@ -28,7 +27,6 @@ if (${_index} GREATER -1 OR "${UA_ARCHITECTURE}" STREQUAL "zephyr_posix")
             ua_architecture_append_to_library(rt)
           endif()
         endif()
-
     endif()
 
 
