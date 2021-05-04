@@ -13,7 +13,7 @@
 
 #include <open62541/plugin/log_stdout.h>
 #include <open62541/plugin/pubsub_udp.h>
-
+#ifndef UA_ARCHITECTURE_ZEPHYR_POSIX 
 /* UDP multicast network layer specific internal data */
 typedef struct {
     int ai_family;                    /* Protocol family for socket. IPv4/IPv6 */
@@ -580,3 +580,4 @@ UA_PubSubTransportLayerUDPMP() {
     pubSubTransportLayer.createPubSubChannel = &TransportLayerUDPMC_addChannel;
     return pubSubTransportLayer;
 }
+#endif

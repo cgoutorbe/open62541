@@ -8,12 +8,12 @@
 #define UA_NETWORK_UDPMC_H_
 
 #include <open62541/plugin/pubsub.h>
-
+#ifndef UA_ARCHITECTURE_ZEPHYR_POSIX
 _UA_BEGIN_DECLS
 
 UA_PubSubTransportLayer UA_EXPORT
 UA_PubSubTransportLayerUDPMP(void);
 
 _UA_END_DECLS
-
+#endif
 #endif /* UA_NETWORK_UDPMC_H_ */

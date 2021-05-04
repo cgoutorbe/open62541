@@ -274,11 +274,11 @@ mark_as_advanced(UA_ENABLE_PUBSUB_BUFMALLOC)
 #RT and Transport PubSub settings
 option(UA_ENABLE_PUBSUB_ETH_UADP "Enable publish/subscribe UADP over Ethernet" OFF)
 
-if(UA_ENABLE_PUBSUB_ETH_UADP)
-    if(NOT CMAKE_SYSTEM MATCHES "Linux")
-    message(FATAL_ERROR "UADP over Ethernet is only available on Linux.")
-    endif()
-endif()
+#if(UA_ENABLE_PUBSUB_ETH_UADP)
+#    if(NOT CMAKE_SYSTEM_NAME MATCHES "Linux" AND NOT CMAKE_SYSTEM_NAME STREQUAL "zephyr_posix")
+#    message(FATAL_ERROR "UADP over Ethernet is only available on Linux.")
+#    endif()
+#endif()
 
 if(UA_ENABLE_PUBSUB_INFORMATIONMODEL_METHODS)
     if(NOT UA_ENABLE_PUBSUB_INFORMATIONMODEL)

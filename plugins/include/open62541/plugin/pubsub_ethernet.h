@@ -9,6 +9,14 @@
 
 #include <open62541/plugin/pubsub.h>
 
+#include <net/ethernet.h>
+#define ether_header net_eth_hdr
+#define ether_dhost dst.addr
+#define	ether_shost src.addr
+#define ether_type type
+#define ETH_ALEN 6
+#define ETHERTYPE_VLAN NET_ETH_PTYPE_VLAN
+
 _UA_BEGIN_DECLS
 
 /**

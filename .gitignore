@@ -1,4 +1,5 @@
 # exclude
+/build_pubsub
 *.log
 *.guess
 .in

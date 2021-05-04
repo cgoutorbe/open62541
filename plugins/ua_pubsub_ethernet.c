@@ -602,7 +602,7 @@ UA_PubSubChannelEthernet_open(const UA_PubSubConnectionConfig *connectionConfig)
         UA_free(channelDataEthernet);
         return NULL;
     }
-
+#ifndef UA_ARCHITECTURE_ZEPHYR_POSIX
     /* get interface index */
     struct ifreq ifreq;
     memset(&ifreq, 0, sizeof(struct ifreq));
@@ -692,7 +692,7 @@ UA_PubSubChannelEthernet_open(const UA_PubSubConnectionConfig *connectionConfig)
     if(sockOptions.enableXdpSocket)
         UA_LOG_WARNING(UA_Log_Stdout, UA_LOGCATEGORY_SERVER,
                        "XDP dependent libraries not found. Use above 5.4 kernel and install libbpf for XDP support. Using AF_PACKET socket");
-
+#endif
     /* Open a packet socket */
     int sockFd = UA_socket(PF_PACKET, SOCK_RAW, 0);
     if(sockFd < 0) {
@@ -758,7 +758,7 @@ UA_PubSubChannelEthernet_open(const UA_PubSubConnectionConfig *connectionConfig)
         return NULL;
     }
 #endif
-
+#ifndef UA_ARCHITECTURE_ZEPHYR_POSIX
     if(UA_ioctl(sockFd, SIOCGIFINDEX, &ifreq) < 0) {
         UA_LOG_ERROR(UA_Log_Stdout, UA_LOGCATEGORY_SERVER,
            "PubSub connection creation failed. Cannot get interface index.");
@@ -783,11 +783,17 @@ UA_PubSubChannelEthernet_open(const UA_PubSubConnectionConfig *connectionConfig)
 #else
     memcpy(channelDataEthernet->ifAddress, &ifreq.ifr_hwaddr.sa_data, ETH_ALEN);
 #endif
-
+#endif
     /* bind the socket to interface and ethertype */
     struct sockaddr_ll sll = { 0 };
     sll.sll_family = AF_PACKET;
+
+#ifdef UA_ARCHITECTURE_ZEPHYR_POSIX
+    sll.sll_ifindex =  net_if_get_by_iface(net_if_get_default());
+    channelDataEthernet->ifindex = sll.sll_ifindex;
+#else
     sll.sll_ifindex = channelDataEthernet->ifindex;
+#endif
     sll.sll_protocol = htons(ETHERTYPE_UADP);
 
     if(UA_bind(sockFd, (struct sockaddr*)&sll, sizeof(sll)) < 0) {
@@ -798,7 +804,7 @@ UA_PubSubChannelEthernet_open(const UA_PubSubConnectionConfig *connectionConfig)
         UA_free(newChannel);
         return NULL;
     }
-
+#ifndef UA_ARCHITECTURE_ZEPHYR_POSIX
     /* Setting the socket priority to the socket */
     if(sockOptions.socketPriority) {
         if (UA_setsockopt(sockFd, SOL_SOCKET, SO_PRIORITY, sockOptions.socketPriority, sizeof(int))) {
@@ -810,6 +816,7 @@ UA_PubSubChannelEthernet_open(const UA_PubSubConnectionConfig *connectionConfig)
             return NULL;
         }
     }
+#endif
 
 #if defined(KERNEL_VERSION)
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,19,0))
@@ -837,10 +844,10 @@ UA_PubSubChannelEthernet_open(const UA_PubSubConnectionConfig *connectionConfig)
 
     newChannel->handle = channelDataEthernet;
     newChannel->state = UA_PUBSUB_CHANNEL_PUB;
-
+#ifndef UA_ARCHITECTURE_ZEPHYR_POSIX
     if(sockOptions.socketPriority)
         UA_free(sockOptions.socketPriority);
-
+#endif
     return newChannel;
 }
 
@@ -878,6 +885,7 @@ UA_PubSubChannelEthernet_regist(UA_PubSubChannel *channel,
 
     if(!is_multicast_address(channelDataEthernet->targetAddress))
         return UA_STATUSCODE_GOOD;
+#ifndef UA_ARCHITECTURE_ZEPHYR_POSIX
 
     struct packet_mreq mreq;
     mreq.mr_ifindex = channelDataEthernet->ifindex;
@@ -889,7 +897,7 @@ UA_PubSubChannelEthernet_regist(UA_PubSubChannel *channel,
         UA_LOG_ERROR(UA_Log_Stdout, UA_LOGCATEGORY_SERVER, "PubSub Connection regist failed. %s", strerror(errno));
         return UA_STATUSCODE_BADINTERNALERROR;
     }
-
+#endif
     return UA_STATUSCODE_GOOD;
 }
 
@@ -907,10 +915,10 @@ UA_PubSubChannelEthernet_unregist(UA_PubSubChannel *channel,
     if(channelDataEthernet->enableXdpSocket)
         return UA_STATUSCODE_GOOD; // Unregist not required for XDP sockets
 
-    if(!is_multicast_address(channelDataEthernet->targetAddress)) {
+    if(!is_multicast_address((const UA_Byte *)channelDataEthernet->targetAddress)) {
         return UA_STATUSCODE_GOOD;
     }
-
+#ifndef UA_ARCHITECTURE_ZEPHYR_POSIX
     struct packet_mreq mreq;
     mreq.mr_ifindex = channelDataEthernet->ifindex;
     mreq.mr_type = PACKET_MR_MULTICAST;
@@ -921,7 +929,7 @@ UA_PubSubChannelEthernet_unregist(UA_PubSubChannel *channel,
         UA_LOG_ERROR(UA_Log_Stdout, UA_LOGCATEGORY_SERVER, "PubSub Connection regist failed.");
         return UA_STATUSCODE_BADINTERNALERROR;
     }
-
+#endif
     return UA_STATUSCODE_GOOD;
 }
 
@@ -1009,6 +1017,15 @@ UA_PubSubChannelEthernet_send(UA_PubSubChannel *channel,
         return retval;
     }
 #endif
+#ifdef UA_ARCHITECTURE_ZEPHYR_POSIX
+    struct sockaddr_ll sll = { 0 };
+    memcpy(&sll.sll_addr,channelDataEthernet->targetAddress,ETH_ALEN);
+    sll.sll_halen= ETH_ALEN;
+    sll.sll_family = AF_PACKET;
+    sll.sll_ifindex = net_if_get_by_iface(net_if_get_default());  //channelDataEthernet->ifindex;
+    sll.sll_protocol = htons(ETHERTYPE_UADP);
+#endif
+
     /* Allocate a buffer for the ethernet data which contains the ethernet
      * header (without VLAN tag), the VLAN tag and the OPC-UA/Ethernet data. */
     char *bufSend, *ptrCur;
@@ -1020,7 +1037,6 @@ UA_PubSubChannelEthernet_send(UA_PubSubChannel *channel,
     bufSend = (char*) UA_malloc(lenBuf);
     if (bufSend == NULL)
         return UA_STATUSCODE_BADOUTOFMEMORY;
-
     ethHdr = (struct ether_header*) bufSend;
 
     /* Set (own) source MAC address */
@@ -1065,6 +1081,25 @@ UA_PubSubChannelEthernet_send(UA_PubSubChannel *channel,
     else
 #endif
 #endif
+    #ifdef UA_ARCHITECTURE_ZEPHYR_POSIX
+    ssize_t rc;
+        rc = UA_sendto(channel->sockfd, bufSend,lenBuf, 0,(const struct sockaddr *)&sll,sizeof(struct sockaddr_ll));
+        if(rc < 0) {
+            //TODO: FIND SOLUTION
+            if(errno == 115){
+                UA_LOG_SOCKET_ERRNO_WRAP(
+                    UA_LOG_ERROR(UA_Log_Stdout, UA_LOGCATEGORY_SERVER,
+                          "IGNORING ERRNO: %s %d", errno_str,errno));
+                errno =0;
+                free(bufSend);
+                return UA_STATUSCODE_GOOD;
+            }
+            UA_LOG_ERROR(UA_Log_Stdout, UA_LOGCATEGORY_SERVER,
+                         "PubSub connection send failed. Send message failed.");
+            UA_free(bufSend);
+            return UA_STATUSCODE_BADINTERNALERROR;
+        }
+    #else
     {
         ssize_t rc;
         rc = UA_send(channel->sockfd, bufSend, lenBuf, 0);
@@ -1075,6 +1110,7 @@ UA_PubSubChannelEthernet_send(UA_PubSubChannel *channel,
             return UA_STATUSCODE_BADINTERNALERROR;
         }
     }
+      #endif
 
     UA_free(bufSend);
     return UA_STATUSCODE_GOOD;
@@ -1166,7 +1202,11 @@ UA_PubSubChannelEthernet_receive(UA_PubSubChannel *channel, UA_ByteString *messa
         msg.msg_iov     = iov;
         msg.msg_iovlen  = 2;
 
+#ifdef UA_ARCHITECTURE_ZEPHYR_POSIX
+       dataLen = UA_recv(channel->sockfd,msg.msg_iov[0].iov_base, msg.msg_iov[0].iov_len,0);
+#else
         dataLen = UA_recvmsg(channel->sockfd, &msg, receiveFlags);
+#endif
         if(dataLen < 0) {
             if(rcvCount == 0) {
                 UA_LOG_ERROR(UA_Log_Stdout, UA_LOGCATEGORY_SERVER,
@@ -1191,7 +1231,7 @@ UA_PubSubChannelEthernet_receive(UA_PubSubChannel *channel, UA_ByteString *messa
             break;
         }
         /* Make sure we match our target */
-        const UA_Byte *compareAddress = is_multicast_address(channelDataEthernet->targetAddress) ?
+        const UA_Byte *compareAddress = is_multicast_address((const UA_Byte *) channelDataEthernet->targetAddress) ?
             eth_hdr.ether_dhost : eth_hdr.ether_shost;
         if(memcmp(compareAddress, channelDataEthernet->targetAddress, ETH_ALEN) != 0) {
             retval = UA_STATUSCODE_GOODNODATA;
